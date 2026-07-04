@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W杯2026 決勝トーナメント & 優勝国ベッティング</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --pitch:#0B3D2E; --pitch-light:#124B37; --pitch-line:rgba(243,238,223,.14);
+    --paper:#F3EEDF; --paper-dim:#E7DFC8; --ink:#16213E; --amber:#E8A33D; --red:#C1432A; --gray:#8A9A93;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--pitch);color:var(--paper);font-family:'Inter',sans-serif;min-height:100vh;}
+
+  /* PASSWORD GATE */
+  #gate{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;}
+  .gate-card{ background:var(--paper); color:var(--ink); border-radius:12px; padding:32px 28px; max-width:340px; width:100%; text-align:center; box-shadow:0 6px 0 rgba(0,0,0,.3);}
+  .gate-card h1{ font-family:'Anton',sans-serif; font-size:22px; margin:0 0 6px;}
+  .gate-card p{ font-size:13px; color:var(--gray); margin:0 0 18px;}
+  .gate-card input{ width:100%; padding:10px; border-radius:6px; border:1px solid var(--paper-dim); font-size:14px; margin-bottom:10px;}
+  .gate-card button{ width:100%; padding:10px; background:var(--amber); border:none; border-radius:6px; font-weight:800; color:var(--pitch); cursor:pointer; font-size:14px;}
+  .gate-error{ color:var(--red); font-size:12px; min-height:16px; margin-top:6px;}
+
+  .wc-app{
+    background: radial-gradient(ellipse at top left, rgba(255,255,255,0.05), transparent 55%),
+      repeating-linear-gradient(90deg, var(--pitch) 0 40px, var(--pitch-light) 40px 80px);
+    padding:22px 16px 40px; max-width:980px; margin:0 auto; overflow:hidden; position:relative; display:none;
+  }
+  .wc-app::before{ content:""; position:absolute; inset:0; background:linear-gradient(180deg, rgba(11,61,46,.55), rgba(11,61,46,.92) 30%); pointer-events:none;}
+  .wc-app > *{ position:relative; z-index:1;}
+
+  .wc-head{ text-align:center; padding:6px 0 22px; border-bottom:1px dashed var(--pitch-line); margin-bottom:20px;}
+  .wc-eyebrow{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.18em; color:var(--amber); text-transform:uppercase;}
+  .wc-title{ font-family:'Anton',sans-serif; font-size:clamp(30px,6vw,52px); line-height:.95; margin:6px 0 2px; color:var(--paper);}
+  .wc-title span{ color:var(--amber);}
+  .wc-sub{ font-size:13px; color:var(--gray); font-family:'IBM Plex Mono',monospace;}
+
+  .wc-section-label{ display:flex; align-items:center; gap:10px; margin:30px 0 14px;}
+  .wc-section-label .num{ font-family:'Anton',sans-serif; font-size:22px; color:var(--pitch); background:var(--amber); width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .wc-section-label h2{ font-family:'Anton',sans-serif; font-weight:400; font-size:20px; margin:0; color:var(--paper);}
+  .wc-section-label .line{ flex:1; height:1px; background:var(--pitch-line);}
+
+  .wc-bracket-scroll{ overflow-x:auto; padding-bottom:8px; margin:0 -4px;}
+  .wc-bracket{ display:flex; gap:22px; min-width:760px; padding:4px;}
+  .wc-round{ flex:1; display:flex; flex-direction:column; justify-content:space-around; gap:14px; min-width:150px;}
+  .wc-round-title{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; text-align:center; color:var(--amber); letter-spacing:.12em; text-transform:uppercase; margin-bottom:4px;}
+  .wc-match{ background:var(--paper); border-radius:8px; overflow:hidden; box-shadow:0 3px 0 rgba(0,0,0,.25); font-size:13px;}
+  .wc-slot{ display:flex; align-items:center; gap:8px; padding:8px 10px; cursor:pointer; color:var(--ink); font-weight:600; border-bottom:1px solid var(--paper-dim); transition:background .12s ease;}
+  .wc-slot:last-child{ border-bottom:none;}
+  .wc-slot:hover:not(.empty):not(.winner){ background:#fff8ea;}
+  .wc-slot.winner{ background:var(--amber);}
+  .wc-slot.loser{ opacity:.4; text-decoration:line-through; cursor:default;}
+  .wc-slot.empty{ color:var(--gray); font-weight:500; font-style:italic; cursor:default; font-size:12px;}
+  .flag{ width:20px; height:14px; border-radius:2px; flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; font-size:11px; overflow:hidden; box-shadow:0 0 0 1px rgba(0,0,0,.15) inset;}
+  .flag.emoji{ font-size:15px; width:auto; height:auto; box-shadow:none;}
+  .eng-flag{ background:#fff; position:relative;}
+  .eng-flag::before,.eng-flag::after{ content:""; position:absolute; background:#C1432A;}
+  .eng-flag::before{ top:0;bottom:0;left:47%;width:14%;}
+  .eng-flag::after{ left:0;right:0;top:43%;height:14%;}
+  .wc-round-title.champ{ color:var(--paper);}
+  .wc-champ-slot{ background:var(--amber); color:var(--pitch); font-family:'Anton',sans-serif; font-size:16px; padding:14px 10px; text-align:center; border-radius:8px; box-shadow:0 3px 0 rgba(0,0,0,.3);}
+  .wc-champ-slot.empty{ background:transparent; border:1.5px dashed var(--pitch-line); color:var(--gray); font-family:'IBM Plex Mono',monospace; font-size:12px; font-style:italic; box-shadow:none;}
+  .wc-reset{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--gray); background:none; border:1px solid var(--pitch-line); padding:5px 10px; border-radius:20px; cursor:pointer; margin-top:14px;}
+  .wc-reset:hover{ color:var(--paper); border-color:var(--paper);}
+  .wc-hint{ font-size:11.5px; color:var(--gray); margin-top:8px; font-family:'IBM Plex Mono',monospace;}
+
+  .wc-pool-intro{ font-size:13.5px; color:var(--paper); line-height:1.6; opacity:.9; margin-bottom:16px;}
+  .wc-pool-intro b{ color:var(--amber);}
+  .wc-tickets{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; margin-bottom:18px;}
+  .ticket{ background:var(--paper); border-radius:10px; color:var(--ink); position:relative; padding:16px 16px 14px; box-shadow:0 4px 0 rgba(0,0,0,.28);}
+  .ticket::after{ content:""; position:absolute; left:0; right:0; bottom:38px; height:0; border-bottom:2px dashed var(--paper-dim);}
+  .ticket .cut-r{ position:absolute; right:-8px; bottom:30px; width:16px; height:16px; background:var(--pitch); border-radius:50%;}
+  .ticket-name{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.1em; color:var(--gray); text-transform:uppercase;}
+  .ticket-pick{ font-family:'Anton',sans-serif; font-size:22px; margin:4px 0 12px; display:flex; align-items:center; gap:8px; min-height:30px;}
+  .ticket-status{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; padding-top:12px; display:flex; justify-content:space-between; align-items:center;}
+  .badge{ padding:2px 8px; border-radius:20px; font-weight:600;}
+  .badge.alive{ background:#1f6d4a; color:#fff;}
+  .badge.out{ background:var(--red); color:#fff;}
+  .badge.champ{ background:var(--amber); color:var(--pitch);}
+  .ticket-edit{ background:none; border:none; color:var(--ink); text-decoration:underline; cursor:pointer; font-size:11px; font-family:'Inter',sans-serif;}
+
+  .wc-form{ background:rgba(0,0,0,.18); border:1px solid var(--pitch-line); border-radius:10px; padding:16px; margin-top:6px;}
+  .wc-form-row{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px;}
+  .wc-form select, .wc-form input[type=text]{ background:var(--paper); border:none; border-radius:6px; padding:9px 10px; font-family:'Inter',sans-serif; font-size:13px; color:var(--ink); flex:1; min-width:140px;}
+  .wc-form button{ background:var(--amber); border:none; color:var(--pitch); font-weight:800; padding:9px 18px; border-radius:6px; cursor:pointer; font-family:'Inter',sans-serif; font-size:13px;}
+  .wc-form button:hover{ filter:brightness(1.08);}
+  .wc-status-line{ font-size:11.5px; color:var(--gray); font-family:'IBM Plex Mono',monospace; min-height:16px;}
+  .wc-footer-note{ text-align:center; font-size:11px; color:var(--gray); font-family:'IBM Plex Mono',monospace; margin-top:26px; opacity:.7;}
+  .wc-sync{ text-align:center; font-size:10.5px; color:var(--gray); font-family:'IBM Plex Mono',monospace; margin-top:4px;}
+
+  @media (max-width:520px){ .wc-app{ padding:16px 10px 24px;} .wc-title{ font-size:30px;} }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="gate-card">
+    <h1>⚽ W杯2026 予想</h1>
+    <p>合言葉を入力してください</p>
+    <input type="password" id="pwInput" placeholder="合言葉">
+    <button id="pwBtn">入る</button>
+    <div class="gate-error" id="pwError"></div>
+  </div>
+</div>
+
+<div class="wc-app" id="wcApp">
+  <div class="wc-head">
+    <div class="wc-eyebrow">FIFA WORLD CUP 2026 · USA · CANADA · MEXICO</div>
+    <div class="wc-title">DECISION <span>ROUND</span></div>
+    <div class="wc-sub" id="wcRoundNote">ラウンド16 (ベスト16) · 2026年7月5日時点</div>
+  </div>
+
+  <div class="wc-section-label"><div class="num">1</div><h2>決勝トーナメント表</h2><div class="line"></div></div>
+  <div class="wc-bracket-scroll"><div class="wc-bracket" id="wcBracket"></div></div>
+  <div class="wc-hint">試合結果が出たら、勝った国をタップして次のラウンドに進めてください（3人で共有されます）</div>
+  <button class="wc-reset" id="wcResetBtn">トーナメント表をリセット</button>
+
+  <div class="wc-section-label"><div class="num">2</div><h2>優勝国ベッティング</h2><div class="line"></div></div>
+  <div class="wc-pool-intro">友達<b>3人</b>で、優勝すると思う国に賭けよう。ピックした国が敗退したら「OUT」、決勝で勝てば「優勝」。</div>
+
+  <div class="wc-tickets" id="wcTickets"></div>
+
+  <div class="wc-form">
+    <div class="wc-form-row">
+      <input type="text" id="wcNameInput" placeholder="名前を入力（例: てつや）" maxlength="12">
+      <select id="wcTeamSelect"></select>
+      <button id="wcSubmitBtn">この国に賭ける</button>
+    </div>
+    <div class="wc-status-line" id="wcStatusLine"></div>
+  </div>
+
+  <div class="wc-footer-note">私的な友人間の非公式ベッティングです</div>
+  <div class="wc-sync" id="wcSync">同期中...</div>
+</div>
+
+<script>
+/* ========= ここだけ書き換えてください ========= */
+const SUPABASE_URL = "https://tqmdbytbxlnsxxsjfren.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_KzjycLagdPO2xPQyzuETmw_bFib4K6a";
+const APP_PASSWORD = "wcup2026";                          // 3人だけに教える合言葉（好きに変更OK、gookum用パスワードとは別にしています）
+/* ============================================= */
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const FLAGS = {
+  "フランス":"🇫🇷","パラグアイ":"🇵🇾","モロッコ":"🇲🇦","カナダ":"🇨🇦",
+  "アメリカ":"🇺🇸","ベルギー":"🇧🇪","ブラジル":"🇧🇷","ノルウェー":"🇳🇴",
+  "メキシコ":"🇲🇽","ポルトガル":"🇵🇹","スペイン":"🇪🇸",
+  "エジプト":"🇪🇬","アルゼンチン":"🇦🇷","コロンビア":"🇨🇴","スイス":"🇨🇭"
+};
+const ENGLAND = "イングランド";
+function flagEl(name){
+  if(name === ENGLAND) return '<span class="flag eng-flag"></span>';
+  return '<span class="flag emoji">'+(FLAGS[name]||"🏳️")+'</span>';
+}
+
+const R16_PAIRS = [
+  ["フランス","パラグアイ"], ["モロッコ","カナダ"], ["アメリカ","ベルギー"], ["ブラジル","ノルウェー"],
+  ["メキシコ",ENGLAND], ["ポルトガル","スペイン"], ["エジプト","アルゼンチン"], ["コロンビア","スイス"]
+];
+
+function freshBracket(){
+  return [
+    R16_PAIRS.map(([h,a]) => ({home:h, away:a, winner:null})),
+    [0,1,2,3].map(()=>({home:null, away:null, winner:null})),
+    [0,1].map(()=>({home:null, away:null, winner:null})),
+    [{home:null, away:null, winner:null}]
+  ];
+}
+
+let state = { bracket: freshBracket(), bets: [] };
+let saving = false;
+
+async function loadState(){
+  const { data, error } = await sb.from('wc26_state').select('*').eq('id','main').single();
+  if(error || !data){ console.error(error); return; }
+  state.bracket = (data.bracket && data.bracket.length) ? data.bracket : freshBracket();
+  state.bets = data.bets || [];
+  render();
+  document.getElementById('wcSync').textContent = "最終同期: " + new Date().toLocaleTimeString('ja-JP');
+}
+
+async function saveState(){
+  saving = true;
+  const { error } = await sb.from('wc26_state').update({
+    bracket: state.bracket, bets: state.bets, updated_at: new Date().toISOString()
+  }).eq('id','main');
+  saving = false;
+  if(error) console.error(error);
+}
+
+function allTeams(){ return R16_PAIRS.flat(); }
+
+function eliminated(){
+  const out = new Set();
+  state.bracket.forEach(round=>{
+    round.forEach(m=>{
+      if(m.winner){
+        if(m.home && m.home !== m.winner) out.add(m.home);
+        if(m.away && m.away !== m.winner) out.add(m.away);
+      }
+    });
+  });
+  return out;
+}
+
+function champion(){ return state.bracket[3][0].winner || null; }
+
+function pickWinner(roundIdx, matchIdx, team){
+  const m = state.bracket[roundIdx][matchIdx];
+  if(!m.home || !m.away) return;
+  m.winner = (m.winner === team) ? null : team;
+  propagate();
+  saveState();
+  render();
+}
+
+function propagate(){
+  for(let r=0;r<3;r++){
+    const cur = state.bracket[r], next = state.bracket[r+1];
+    for(let i=0;i<next.length;i++){
+      const a = cur[i*2], b = cur[i*2+1];
+      const wantedHome = a ? a.winner : null;
+      const wantedAway = b ? b.winner : null;
+      if(next[i].home !== wantedHome || next[i].away !== wantedAway){
+        next[i].home = wantedHome; next[i].away = wantedAway;
+        if(next[i].winner && next[i].winner !== wantedHome && next[i].winner !== wantedAway){
+          next[i].winner = null;
+        }
+      }
+    }
+  }
+}
+
+function slotHtml(roundIdx, matchIdx, team, m){
+  if(!team) return `<div class="wc-slot empty">未定</div>`;
+  let cls = "wc-slot";
+  if(m.winner === team) cls += " winner";
+  else if(m.winner && m.winner !== team) cls += " loser";
+  return `<div class="${cls}" data-r="${roundIdx}" data-m="${matchIdx}" data-team="${encodeURIComponent(team)}">${flagEl(team)}<span>${team}</span></div>`;
+}
+
+function renderBracket(){
+  const titles = ["ラウンド16","準々決勝","準決勝","決勝"];
+  const el = document.getElementById('wcBracket');
+  let html = "";
+  state.bracket.forEach((round, rIdx)=>{
+    html += `<div class="wc-round"><div class="wc-round-title">${titles[rIdx]}</div>`;
+    round.forEach((m, mIdx)=>{
+      html += `<div class="wc-match">${slotHtml(rIdx,mIdx,m.home,m)}${slotHtml(rIdx,mIdx,m.away,m)}</div>`;
+    });
+    html += `</div>`;
+  });
+  const champ = champion();
+  html += `<div class="wc-round"><div class="wc-round-title champ">優勝</div>
+    <div class="wc-champ-slot ${champ ? "" : "empty"}">${champ ? flagEl(champ)+" "+champ : "決勝の勝者を選択"}</div></div>`;
+  el.innerHTML = html;
+
+  el.querySelectorAll('.wc-slot[data-team]').forEach(node=>{
+    node.addEventListener('click', ()=>{
+      pickWinner(parseInt(node.dataset.r,10), parseInt(node.dataset.m,10), decodeURIComponent(node.dataset.team));
+    });
+  });
+}
+
+function renderTeamSelect(){
+  const sel = document.getElementById('wcTeamSelect');
+  const elim = eliminated();
+  const teams = allTeams().filter(t => !elim.has(t));
+  sel.innerHTML = teams.map(t=>`<option value="${t}">${t}</option>`).join("");
+}
+
+let elimCache = new Set();
+function statusForBet(bet){
+  const champ = champion();
+  if(champ && champ === bet.team) return {label:"優勝！🏆", cls:"champ"};
+  if(elimCache.has(bet.team)) return {label:"敗退 OUT", cls:"out"};
+  return {label:"勝ち残り中", cls:"alive"};
+}
+
+function renderTickets(){
+  elimCache = eliminated();
+  const wrap = document.getElementById('wcTickets');
+  if(state.bets.length === 0){
+    wrap.innerHTML = `<div style="grid-column:1/-1;color:var(--gray);font-family:'IBM Plex Mono',monospace;font-size:12.5px;padding:10px 2px;">まだ誰も予想していません。下のフォームから最初のベットを登録しよう。</div>`;
+    return;
+  }
+  wrap.innerHTML = state.bets.map((bet, idx)=>{
+    const st = statusForBet(bet);
+    return `<div class="ticket"><div class="cut-r"></div>
+      <div class="ticket-name">PLAYER — ${bet.name}</div>
+      <div class="ticket-pick">${flagEl(bet.team)} ${bet.team}</div>
+      <div class="ticket-status"><span class="badge ${st.cls}">${st.label}</span>
+      <button class="ticket-edit" data-idx="${idx}">削除</button></div></div>`;
+  }).join("");
+
+  wrap.querySelectorAll('.ticket-edit').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      state.bets.splice(parseInt(btn.dataset.idx,10),1);
+      saveState(); render();
+    });
+  });
+}
+
+function render(){
+  renderBracket(); renderTeamSelect(); renderTickets();
+  const champ = champion();
+  document.getElementById('wcRoundNote').textContent = champ ? `優勝: ${champ} が決定しました 🏆` : "ラウンド16 (ベスト16) · 2026年7月5日時点";
+}
+
+document.getElementById('wcSubmitBtn').addEventListener('click', async ()=>{
+  const nameInput = document.getElementById('wcNameInput');
+  const teamSelect = document.getElementById('wcTeamSelect');
+  const status = document.getElementById('wcStatusLine');
+  const name = nameInput.value.trim();
+  const team = teamSelect.value;
+  if(!name){ status.textContent = "名前を入力してください。"; return; }
+  if(!team){ status.textContent = "選べる国がありません。"; return; }
+
+  const idx = state.bets.findIndex(b => b.name === name);
+  if(idx >= 0){
+    state.bets[idx].team = team; state.bets[idx].ts = Date.now();
+    status.textContent = `${name} さんの予想を ${team} に更新しました。`;
+  } else {
+    state.bets.push({name, team, ts:Date.now()});
+    status.textContent = `${name} さんが ${team} に賭けました！`;
+  }
+  await saveState(); render(); nameInput.value = "";
+});
+
+document.getElementById('wcResetBtn').addEventListener('click', async ()=>{
+  if(!confirm("トーナメント表の勝敗記録をリセットします。よろしいですか？（ベットは残ります）")) return;
+  state.bracket = freshBracket();
+  await saveState(); render();
+});
+
+/* --- password gate --- */
+document.getElementById('pwBtn').addEventListener('click', enter);
+document.getElementById('pwInput').addEventListener('keydown', e=>{ if(e.key==='Enter') enter(); });
+function enter(){
+  const val = document.getElementById('pwInput').value;
+  if(val === APP_PASSWORD){
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('wcApp').style.display = 'block';
+    loadState();
+    setInterval(loadState, 6000); // 他の人の更新を6秒ごとに反映
+  } else {
+    document.getElementById('pwError').textContent = "合言葉が違います。";
+  }
+}
+</script>
+</body>
+</html>
